@@ -15,9 +15,6 @@ from urllib.parse import urlparse, parse_qs
 import rsa
 import requests
 import os
-# --- 新增导入 ---
-import concurrent.futures
-# ----------------
 
 VERSION = '9.0.6'
 MODEL = 'KB2000'
@@ -89,7 +86,7 @@ def get_encrypt_key():
     :return:
     """
     data = {'appId': 'cloud'}
-    url = '  https://open.e.189.cn/api/logbox/config/encryptConf.do  '
+    url = 'https://open.e.189.cn/api/logbox/config/encryptConf.do'
     res = requests.post(url, data=data).json()
     result = res.get('result', 0)
     if result != 0:
@@ -127,11 +124,11 @@ def get_login_form_data(username, password, encrypt_key):
     }
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0',
-        'Referer': '  https://open.e.189.cn/  ',
+        'Referer': 'https://open.e.189.cn/',
         'lt': query['lt'][0],
         'REQID': query['reqId'][0],
     }
-    url = 'https://open.e.189.cn/api/logbox/oauth2/appConf.do  '
+    url = 'https://open.e.189.cn/api/logbox/oauth2/appConf.do'
     res = requests.post(url, headers=headers, data=data).json()
     if res['result'] == '0':
         username_encrypt_base64 = rsa_encode(encrypt_key, username)
@@ -169,10 +166,10 @@ def login(formData):
         'userName': formData['userName'],
         'password': formData['password'],
     }
-    response = requests.post('https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do  ',
+    response = requests.post('https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do',
                              headers={
                                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0',
-                                 'Referer': 'https://open.e.189.cn/  ',
+                                 'Referer': 'https://open.e.189.cn/',
                                  'lt': formData['lt'],
                                  'REQID': formData['REQID']
                              },
@@ -214,9 +211,9 @@ def do_task():
     """
     tasks = [
         f"https://cloud.189.cn/mkt/userSign.action?rand={int(time.time() * 1000)}&clientType=TELEANDROID&version={VERSION}&model={MODEL}",
-        '  https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN',
-        '  https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN',
-        '  https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN',
+        'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN&activityId=ACT_SIGNIN',
+        'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_SIGNIN_PHOTOS&activityId=ACT_SIGNIN',
+        'https://m.cloud.189.cn/v2/drawPrizeMarketDetails.action?taskId=TASK_2022_FLDFS_KJ&activityId=ACT_SIGNIN',
     ]
 
     result = []
@@ -236,53 +233,13 @@ def do_task():
                 result.append(f"第{index}次抽奖成功,抽奖获得{json_data.get('prizeName', '')}")
     return result
 
-# --- 新增函数：用于并发执行 ---
-# 为了并发且不修改原 do_task 逻辑，每个并发进程需要独立登录
-def _run_do_task(username, password):
-    """在独立进程中运行的任务，包含重新登录"""
-    try:
-        # 重新登录以获取独立的 session
-        do_login(username, password)
-        # 执行任务
-        result = do_task()
-        return result
-    except Exception as e:
-        return [f"并发任务执行失败: {e}"]
-# -----------------------------
-
 def main(ty_username, ty_password):
     result_list = []
     encrypt_key, login_form_data, login_result = do_login(ty_username, ty_password)
     if login_result == 200:
         result_list.append('天翼网盘登录成功')
-    # 执行第一次签到任务
     result = do_task()
     result_list.extend(result)
-    
-    # --- 新增并发逻辑 ---
-    try:
-        # 启动 7 个并发进程执行签到任务
-        num_processes = 7
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
-            # 提交任务：每个任务都是重新登录并执行 do_task
-            future_to_index = {executor.submit(_run_do_task, ty_username, ty_password): i for i in range(num_processes)}
-            
-            concurrent_results = []
-            for future in concurrent.futures.as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    data = future.result()
-                    concurrent_results.append(f"[并发{index+1}] {'。'.join(data)}")
-                except Exception as exc:
-                    concurrent_results.append(f'[并发{index+1}] 产生异常: {exc}')
-            
-            # 将并发结果添加到最终结果列表
-            result_list.extend(concurrent_results)
-            
-    except Exception as e:
-        result_list.append(f"启动并发任务时出错: {e}")
-    # ---------------------
-
     result_string = "。".join(result_list)
     print(result_list)
     return result_string
