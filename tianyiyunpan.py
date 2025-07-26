@@ -319,22 +319,27 @@ def _run_do_task(username, password):
 
 def main(ty_username, ty_password):
     result_list = []
-    encrypt_key, login_form_data, login_result = do_login(ty_username, ty_password)
-    if login_result == 200:
-        result_list.append('天翼网盘登录成功')
-    # 执行第一次签到任务
-    result = do_task()
-    result_list.extend(result)
-    
-    # --- 新增并发逻辑 ---
     try:
-        # 启动 7 个并发进程执行签到任务
+        # 1. 首先执行登录
+        encrypt_key, login_form_data, login_result = do_login(ty_username, ty_password)
+        if login_result == 200:
+            result_list.append('天翼网盘登录成功')
+        else:
+            result_list.append(f'天翼网盘登录失败, 状态码: {login_result}')
+            # 如果登录失败，通常不继续执行任务，但可以根据需要调整
+            # return "。".join(result_list)
+
+        # 2. --- 新增并发逻辑 ---
+        # 在登录成功后，立即启动 7 个并发进程执行签到任务
         num_processes = 7
+        concurrent_results = []
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
             # 提交任务：每个任务都是重新登录并执行 do_task
+            # 注意：_run_do_task 会在每个子进程中重新登录
             future_to_index = {executor.submit(_run_do_task, ty_username, ty_password): i for i in range(num_processes)}
-            
-            concurrent_results = []
+
+            # 收集并发执行的结果
             for future in concurrent.futures.as_completed(future_to_index):
                 index = future_to_index[future]
                 try:
@@ -343,16 +348,16 @@ def main(ty_username, ty_password):
                     concurrent_results.append(f"[并发{index+1}] {'。'.join(data)}")
                 except Exception as exc:
                     concurrent_results.append(f'[并发{index+1}] 产生异常: {exc}')
-            
-            # 将并发结果添加到最终结果列表
-            result_list.extend(concurrent_results)
-            
+
+        # 3. 将并发结果添加到最终结果列表
+        result_list.extend(concurrent_results)
+
     except Exception as e:
-        result_list.append(f"启动并发任务时出错: {e}")
-    # ---------------------
+        result_list.append(f"执行过程中出错: {e}")
+    # --- 并发逻辑结束 ---
 
     result_string = "。".join(result_list)
-    print(result_list)
+    print(result_list) # 打印详细列表到日志
     return result_string
 
 
